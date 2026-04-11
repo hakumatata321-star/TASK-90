@@ -1,0 +1,49 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ricms
+      POSTGRES_USER: ricms
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ricms_secret}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ricms -d ricms"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "5432:5432"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ricms
+      DB_USER: ricms
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-ricms_secret}
+      JWT_SECRET: ${JWT_SECRET:-a-very-long-secret-key-for-ricms-that-is-at-least-256-bits-long-and-secure}
+      APP_ENCRYPTION_SECRET_KEY: ${APP_ENCRYPTION_SECRET_KEY:-WnVea3WTlDC0CXcZaL/SDRVSisv4xPnyM1Ja8VFoGWo=}
+      SPRING_JPA_SHOW_SQL: "false"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  pgdata:

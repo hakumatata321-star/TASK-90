@@ -1,0 +1,49 @@
+# IDEs
+.vscode/
+.idea/
+*.iml
+*.iws
+.project
+.classpath
+.settings/
+
+# Build artifacts
+repo/target/
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+
+# Logs
+repo/*.log
+*.log
+hs_err_pid*
+replay_pid*
+
+# Maven
+.mvn/
+!mvnw
+!mvnw.cmd
+
+# Workspace specific
+.claude/
+sessions-2/
+
+# Environment secrets
+.env
+repo/.env
+
+# OS
+Thumbs.db
+.DS_Store
+/session-1.json
+.claude/
+**/.claude/
+
+# Session / conversion artifacts
+54ae1554-5a8c-4245-b6ec-bf75d0cc1f16.jsonl
+67af3a80-e7fb-4305-ba1f-bed2e2910b3a.jsonl
+convert_ai_session.py

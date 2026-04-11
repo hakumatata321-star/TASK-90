@@ -1,0 +1,50 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:db}:${DB_PORT:5432}/${DB_NAME:ricms}
+    username: ${DB_USER:ricms}
+    password: ${DB_PASSWORD:ricms_secret}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:a-very-long-secret-key-for-ricms-that-is-at-least-256-bits-long}
+    expiration-ms: 3600000
+  rate-limit:
+    comments-per-hour: 30
+    reports-per-day: 10
+  encryption:
+    # Base64-encoded 32-byte AES-256-GCM key.
+    # Override in production via APP_ENCRYPTION_SECRET_KEY environment variable.
+    # Generate: openssl rand -base64 32
+    secret-key: ${APP_ENCRYPTION_SECRET_KEY:CHANGE_ME_32_BYTE_BASE64_KEY_PLACEHOLDER==}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    com.example.ricms: INFO
+  pattern:
+    console: "%d{ISO8601} [%thread] %-5level %logger{36} - %msg%n"
