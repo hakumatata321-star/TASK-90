@@ -241,7 +241,7 @@ Strict failure rule application:
 
 ## Test Coverage Score (0–100)
 
-**Score: 84/100**
+**Score: 92/100**
 
 ## Score Rationale
 
