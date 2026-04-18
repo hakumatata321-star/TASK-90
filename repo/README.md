@@ -24,9 +24,9 @@ inside the Docker build.
 
 | Component | URL / Port |
 |-----------|-----------|
-| API       | http://localhost:8080 |
+| API       | http://localhost:8082 |
 | Postgres  | localhost:5432 (user: `ricms`, db: `ricms`, password: `ricms_secret`) |
-| Health    | http://localhost:8080/actuator/health |
+| Health    | http://localhost:8082/actuator/health |
 
 ### Demo credentials
 
@@ -42,39 +42,31 @@ Seeded on first `docker-compose up` by Flyway migrations:
 
 ## Running Tests
 
-### Docker-only verification (no local JDK, Maven, or Python required)
+### Docker-contained verification (strict mode)
 
 ```bash
 # 1. Start the stack (database + app)
 docker-compose up -d --build
 
-# 2. Run unit tests inside Docker (no local Maven/JDK needed)
+# 2. Run unit tests inside Docker
 docker-compose --profile test run --rm unit-tests
 
-# 3. Run API tests
-#    curl and python3 are pre-installed on macOS and all major Linux distros.
-RICMS_BASE_URL=http://localhost:8080 ./run_tests.sh --api-only
+# 3. Verify API health from a running container
+docker-compose exec app wget -qO- http://localhost:8080/actuator/health
+
+# 4. Run API test scripts against the host-mapped app port
+RICMS_BASE_URL=http://localhost:8082 bash API_tests/01_auth.sh
+RICMS_BASE_URL=http://localhost:8082 bash API_tests/02_members.sh
+RICMS_BASE_URL=http://localhost:8082 bash API_tests/03_orders.sh
+RICMS_BASE_URL=http://localhost:8082 bash API_tests/04_coupons_campaigns.sh
+RICMS_BASE_URL=http://localhost:8082 bash API_tests/05_outcomes.sh
+RICMS_BASE_URL=http://localhost:8082 bash API_tests/06_interactions.sh
+RICMS_BASE_URL=http://localhost:8082 bash API_tests/07_admin.sh
+RICMS_BASE_URL=http://localhost:8082 bash API_tests/08_work_orders.sh
+RICMS_BASE_URL=http://localhost:8082 bash API_tests/09_rbac.sh
 ```
 
-### One-command runner (local dev — requires JDK 21+, Maven 3.9+, curl, python3)
-
-```bash
-./run_tests.sh
-```
-
-Runs both unit tests and API tests and prints a consolidated pass/fail summary.
-
-```bash
-./run_tests.sh --unit-only    # Maven unit tests only (no server needed)
-./run_tests.sh --api-only     # API tests only (server must be running)
-RICMS_BASE_URL=http://host:9090 ./run_tests.sh   # override server URL
-```
-
-### Unit tests individually (local dev)
-
-```bash
-mvn test
-```
+All verification above is Docker-first; no local package-manager installation steps are required.
 
 Test sources live in `unit_tests/` (added as a Maven test source root via build-helper plugin).
 
@@ -114,7 +106,7 @@ All endpoints except `POST /v1/auth/login` and `/actuator/**` require a
 
 ```bash
 # Obtain a token
-TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:8082/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"Admin@1234!"}' \
   | python3 -c "import json,sys; print(json.load(sys.stdin)['accessToken'])")
@@ -458,7 +450,7 @@ curl "http://localhost:8080/v1/admin/exports/work-orders?format=csv" \
 ### Health
 
 ```bash
-curl http://localhost:8080/actuator/health
+curl http://localhost:8082/actuator/health
 # {"status":"UP"}
 ```
 
