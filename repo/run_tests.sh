@@ -3,22 +3,20 @@
 # run_tests.sh — RICMS unified test runner
 #
 # Usage:
-#   ./run_tests.sh               # run both unit and API tests
-#   ./run_tests.sh --unit-only   # skip API tests (server not required)
-#   ./run_tests.sh --api-only    # skip Maven unit tests
-#   RICMS_BASE_URL=http://host:8080 ./run_tests.sh
+#   bash run_tests.sh               # start Docker, run unit tests + API tests
+#   bash run_tests.sh --unit-only   # start Docker, run unit tests only
+#   bash run_tests.sh --api-only    # start Docker, run API tests only
 #
 # Requirements:
-#   - JDK 21+ and Maven 3.9+ on PATH  (for unit tests)
-#   - curl and python3 on PATH         (for API tests)
-#   - RICMS server running at RICMS_BASE_URL (for API tests)
+#   - Docker with docker compose
+#   - curl and python3 on PATH (for API tests)
 # ============================================================================
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-export RICMS_BASE_URL="${RICMS_BASE_URL:-http://localhost:8080}"
+BASE_URL="http://localhost:8082"
 
 RUN_UNIT=true
 RUN_API=true
@@ -37,97 +35,107 @@ success() { echo -e "${GREEN}$*${RESET}"; }
 warn()    { echo -e "${YELLOW}$*${RESET}"; }
 error()   { echo -e "${RED}$*${RESET}"; }
 
+# ── Docker compose helper ─────────────────────────────────────────────────────
+COMPOSE_CMD=""
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD="docker-compose"
+else
+    error "Docker not found. Install Docker Desktop and try again."
+    exit 1
+fi
+
 # ── Totals ────────────────────────────────────────────────────────────────────
 UNIT_PASS=0; UNIT_FAIL=0
 API_PASS=0;  API_FAIL=0
 ALL_FAILURES=""
 
 # =============================================================================
-# UNIT TESTS  (Maven)
+# STEP 1 — Ensure the app stack is running
+# =============================================================================
+start_stack() {
+    info ""
+    info "════════════════════════════════════════════"
+    info "  STARTING DOCKER STACK"
+    info "════════════════════════════════════════════"
+
+    $COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" up -d --build
+
+    info "Waiting for server to become healthy at $BASE_URL (up to 120s)..."
+    local elapsed=0
+    while ! curl -sf --max-time 3 "$BASE_URL/actuator/health" >/dev/null 2>&1; do
+        sleep 5
+        elapsed=$((elapsed + 5))
+        if [ "$elapsed" -ge 120 ]; then
+            error "Server did not become healthy after 120s."
+            error "Check logs with:  $COMPOSE_CMD logs app"
+            exit 1
+        fi
+        echo -n "."
+    done
+    echo ""
+    success "Server is up at $BASE_URL"
+}
+
+# =============================================================================
+# STEP 2 — Unit tests (run inside Docker via the 'test' build stage)
 # =============================================================================
 run_unit_tests() {
     info ""
     info "════════════════════════════════════════════"
-    info "  UNIT TESTS (Maven / JUnit 5 + Mockito)"
+    info "  UNIT TESTS (Docker / JUnit 5 + Mockito)"
     info "════════════════════════════════════════════"
 
-    local mvn_output
-    mvn_output=$(mvn test --no-transfer-progress 2>&1)
-    local mvn_rc=$?
+    local output rc
+    output=$($COMPOSE_CMD -f "$SCRIPT_DIR/docker-compose.yml" \
+        --profile test run --rm unit-tests 2>&1) || rc=$?
+    rc=${rc:-0}
 
-    # Extract per-class counts from surefire output
-    local summary
-    summary=$(echo "$mvn_output" | grep "Tests run:" | tail -n +1)
-    echo "$summary"
+    echo "$output"
 
-    # Extract aggregate totals from the last "Tests run:" line (the aggregate)
-    local agg
-    agg=$(echo "$mvn_output" | grep "^\\[INFO\\] Tests run:" | tail -1)
-    if [ -n "$agg" ]; then
-        echo ""
-        echo "$agg"
-    fi
-
-    if [ $mvn_rc -eq 0 ]; then
-        # Parse totals from the final summary line
-        UNIT_PASS=$(echo "$mvn_output" | grep "Tests run:" | tail -1 | \
-            grep -oP 'Tests run: \K[0-9]+' || echo 0)
+    if [ $rc -eq 0 ]; then
+        UNIT_PASS=$(echo "$output" | grep -oE 'Tests run: [0-9]+' | tail -1 | grep -oE '[0-9]+$' || echo 0)
         UNIT_FAIL=0
         success "Unit tests: ALL PASSED"
     else
-        # Extract failure details
-        local fails
-        fails=$(echo "$mvn_output" | grep -E "FAIL|ERROR" | grep -v "^\[" | head -20)
         error "Unit tests: FAILURES DETECTED"
-        echo "$fails"
-
-        # Count failures/errors from surefire
-        UNIT_FAIL=$(echo "$mvn_output" | grep -oP 'Failures: \K[0-9]+' | \
-            awk '{sum+=$1} END {print sum}')
-        local errors
-        errors=$(echo "$mvn_output" | grep -oP 'Errors: \K[0-9]+' | \
-            awk '{sum+=$1} END {print sum}')
-        UNIT_FAIL=$((${UNIT_FAIL:-0} + ${errors:-0}))
-
-        UNIT_PASS=$(echo "$mvn_output" | grep -oP 'Tests run: \K[0-9]+' | \
-            awk '{sum+=$1} END {print sum}')
-        UNIT_PASS=$((${UNIT_PASS:-0} - ${UNIT_FAIL:-0}))
-
-        # Collect failure messages for the final summary
+        UNIT_FAIL=$(echo "$output" | grep -oE 'Failures: [0-9]+' | grep -oE '[0-9]+$' | awk '{sum+=$1} END {print sum+0}')
+        local errs
+        errs=$(echo "$output" | grep -oE 'Errors: [0-9]+' | grep -oE '[0-9]+$' | awk '{sum+=$1} END {print sum+0}')
+        UNIT_FAIL=$((UNIT_FAIL + errs))
+        UNIT_PASS=$(echo "$output" | grep -oE 'Tests run: [0-9]+' | grep -oE '[0-9]+$' | awk '{sum+=$1} END {print sum+0}')
+        UNIT_PASS=$((UNIT_PASS - UNIT_FAIL))
         local fail_msgs
-        fail_msgs=$(echo "$mvn_output" | grep -E "\[ERROR\].*<<<" | \
-            sed 's/\[ERROR\] *//' | head -20)
+        fail_msgs=$(echo "$output" | grep -E "\[ERROR\].*<<<" | sed 's/\[ERROR\] *//' | head -20)
         ALL_FAILURES="$ALL_FAILURES\n  [Unit] $fail_msgs"
-
-        # Print relevant log lines for diagnosis
-        echo ""
-        warn "Key failure log (first 40 relevant lines):"
-        echo "$mvn_output" | grep -A3 "<<<" | head -40
     fi
 }
 
 # =============================================================================
-# API TESTS  (curl scripts)
+# STEP 3 — API tests (curl scripts against running server)
 # =============================================================================
 run_api_tests() {
+    export RICMS_BASE_URL="$BASE_URL"
+
     info ""
     info "════════════════════════════════════════════"
-    info "  API TESTS (curl → $RICMS_BASE_URL)"
+    info "  API TESTS (curl → $BASE_URL)"
     info "════════════════════════════════════════════"
-
-    # Check server reachability
-    if ! curl -sf --max-time 5 "$RICMS_BASE_URL/actuator/health" >/dev/null 2>&1; then
-        warn "Server not reachable at $RICMS_BASE_URL — skipping API tests."
-        warn "Start the server with:  docker compose up -d"
-        warn "Then re-run:            ./run_tests.sh --api-only"
-        return 0
-    fi
 
     local scripts=("$SCRIPT_DIR/API_tests"/0*.sh)
     if [ ${#scripts[@]} -eq 0 ] || [ ! -f "${scripts[0]}" ]; then
         warn "No API test scripts found in API_tests/"
         return 0
     fi
+
+    local pre_resp
+    pre_resp=$(curl -s -X POST "$BASE_URL/v1/auth/login" \
+        -H "Content-Type: application/json" \
+        -d '{"username":"admin","password":"Admin@1234!"}')
+    export ADMIN_TOKEN
+    ADMIN_TOKEN=$(echo "$pre_resp" | python3 -c \
+        "import json,sys; print(json.load(sys.stdin).get('accessToken',''))" 2>/dev/null || true)
 
     for script in "${scripts[@]}"; do
         [ -f "$script" ] || continue
@@ -137,17 +145,15 @@ run_api_tests() {
         info ""
         info "── Running: $name ──"
 
-        # Run script in a sub-shell so its PASS/FAIL vars don't bleed
         local output rc
         output=$(bash "$script" 2>&1) || true
         rc=$?
 
         echo "$output"
 
-        # Extract pass/fail from the script's last "results:" line
         local s_pass s_fail
-        s_pass=$(echo "$output" | grep -oP 'pass=\K[0-9]+' | tail -1 || echo 0)
-        s_fail=$(echo "$output" | grep -oP 'fail=\K[0-9]+' | tail -1 || echo 0)
+        s_pass=$(echo "$output" | grep -oE 'pass=[0-9]+' | tail -1 | sed 's/pass=//' || echo 0)
+        s_fail=$(echo "$output" | grep -oE 'fail=[0-9]+' | tail -1 | sed 's/fail=//' || echo 0)
         API_PASS=$((API_PASS + ${s_pass:-0}))
         API_FAIL=$((API_FAIL + ${s_fail:-0}))
 
@@ -164,8 +170,10 @@ run_api_tests() {
 # =============================================================================
 START_TIME=$SECONDS
 
-$RUN_UNIT  && run_unit_tests
-$RUN_API   && run_api_tests
+start_stack
+
+$RUN_UNIT && run_unit_tests
+$RUN_API  && run_api_tests
 
 ELAPSED=$((SECONDS - START_TIME))
 

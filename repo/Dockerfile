@@ -8,6 +8,15 @@ COPY src ./src
 COPY unit_tests ./unit_tests
 RUN mvn package -DskipTests -q
 
+# ---------- test stage (unit tests — no server needed) ----------
+FROM maven:3.9-eclipse-temurin-21-alpine AS test
+WORKDIR /workspace
+COPY pom.xml .
+RUN mvn dependency:go-offline -q
+COPY src ./src
+COPY unit_tests ./unit_tests
+ENTRYPOINT ["mvn", "test", "--no-transfer-progress"]
+
 # ---------- runtime stage ----------
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app

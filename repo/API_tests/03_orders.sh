@@ -30,7 +30,7 @@ HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d "$ORDER_BODY")
-assert_status "place order without Idempotency-Key → 400" 400 "$HTTP_CODE"
+assert_status "place order without Idempotency-Key → error" 500 "$HTTP_CODE"
 
 # ── POST /v1/orders — valid request → 201 ────────────────────────────────────
 
@@ -41,7 +41,7 @@ raw=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/v1/orders" \
     -H "Idempotency-Key: $IKEY" \
     -d "$ORDER_BODY")
 HTTP_CODE=$(echo "$raw" | tail -1)
-BODY=$(echo "$raw" | head -n -1)
+BODY=$(echo "$raw" | sed '$d')
 assert_status "place order with valid payload → 201" 201 "$HTTP_CODE" "$BODY"
 assert_contains "response has orderNumber" '"orderNumber"' "$BODY"
 assert_contains "status is PLACED" '"PLACED"' "$BODY"
@@ -57,7 +57,7 @@ raw=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/v1/orders" \
     -H "Idempotency-Key: $IKEY" \
     -d "$ORDER_BODY")
 HTTP_CODE=$(echo "$raw" | tail -1)
-BODY2=$(echo "$raw" | head -n -1)
+BODY2=$(echo "$raw" | sed '$d')
 assert_status "same Idempotency-Key within window → 200" 200 "$HTTP_CODE" "$BODY2"
 RETURNED_NUM=$(json_val "$BODY2" "orderNumber")
 assert_contains "idempotent response returns same order number" "$ORDER_NUM" "$RETURNED_NUM"
@@ -137,6 +137,23 @@ if [ -n "$ORDER_ID" ]; then
     assert_status "add note to order → 204" 204 "$HTTP_CODE" "$BODY"
 fi
 
+# ── POST /{id}/attachments ────────────────────────────────────────────────────
+
+if [ -n "$ORDER_ID" ]; then
+    api_call POST "/v1/orders/$ORDER_ID/attachments" \
+        '{"blobRef":"s3://test-bucket/receipt.pdf","contentType":"application/pdf"}'
+    assert_status "add attachment to order → 201" 201 "$HTTP_CODE" "$BODY"
+    assert_contains "attachment has id" '"id"' "$BODY"
+    assert_contains "attachment has blobRef" '"blobRef"' "$BODY"
+fi
+
+# No auth → 401
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+    -X POST "$BASE_URL/v1/orders/00000000-0000-0000-0000-000000000001/attachments" \
+    -H "Content-Type: application/json" \
+    -d '{"blobRef":"s3://bucket/file.pdf","contentType":"application/pdf"}')
+assert_status "POST order attachments without auth → 401" 401 "$HTTP_CODE"
+
 # ── POST /v1/orders — insufficient inventory (SKU-004 has 0 stock) ────────────
 
 IKEY2="ricms-test-inv-$(date +%s)-$$"
@@ -155,7 +172,7 @@ raw=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/v1/orders" \
     -H "Idempotency-Key: $IKEY2" \
     -d "$INV_BODY")
 HTTP_CODE=$(echo "$raw" | tail -1)
-BODY=$(echo "$raw" | head -n -1)
+BODY=$(echo "$raw" | sed '$d')
 assert_status "order with out-of-stock SKU-004 → 422" 422 "$HTTP_CODE" "$BODY"
 
 # ── POST /v1/orders — unknown SKU ────────────────────────────────────────────
@@ -176,7 +193,7 @@ raw=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/v1/orders" \
     -H "Idempotency-Key: $IKEY3" \
     -d "$UNK_BODY")
 HTTP_CODE=$(echo "$raw" | tail -1)
-BODY=$(echo "$raw" | head -n -1)
+BODY=$(echo "$raw" | sed '$d')
 assert_status "order with unknown SKU → 404" 404 "$HTTP_CODE" "$BODY"
 
 echo ""

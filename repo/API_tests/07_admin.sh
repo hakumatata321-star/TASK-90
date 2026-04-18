@@ -107,7 +107,7 @@ api_call POST /v1/users "{\"username\":\"$MEMBER_USER\",\"password\":\"Member@12
 raw=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/v1/auth/login" \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$MEMBER_USER\",\"password\":\"Member@1234!\"}")
-MEMBER_TOKEN=$(echo "$raw" | head -n -1 | python3 -c "import json,sys; print(json.load(sys.stdin).get('accessToken',''))" 2>/dev/null)
+MEMBER_TOKEN=$(echo "$raw" | sed '$d' | python3 -c "import json,sys; print(json.load(sys.stdin).get('accessToken',''))" 2>/dev/null)
 
 if [ -n "$MEMBER_TOKEN" ]; then
     # KPIs should return 403 for non-admin

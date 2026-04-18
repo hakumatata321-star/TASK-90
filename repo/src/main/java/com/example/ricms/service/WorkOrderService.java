@@ -169,10 +169,21 @@ public class WorkOrderService {
         WorkOrderEvent event = WorkOrderEvent.builder()
                 .workOrderId(workOrderId)
                 .eventType(type)
-                .payload(payload)
+                .payload(toJsonPayload(payload))
                 .actorUserId(actorId)
                 .build();
         workOrderEventRepository.save(event);
+    }
+
+    private static String toJsonPayload(String raw) {
+        if (raw == null) return null;
+        raw = raw.trim();
+        if (raw.startsWith("{") || raw.startsWith("[") || raw.startsWith("\"")
+                || raw.equals("null") || raw.equals("true") || raw.equals("false")) {
+            return raw;
+        }
+        try { new java.math.BigDecimal(raw); return raw; } catch (Exception ignored) {}
+        return "\"" + raw.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     @Transactional

@@ -3,6 +3,8 @@ package com.example.ricms.domain.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -30,6 +32,7 @@ public class ModerationQueue {
     @Column(name = "target_id", nullable = false)
     private UUID targetId;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "JSONB")
     private String payload;
 

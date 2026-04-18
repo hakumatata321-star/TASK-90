@@ -4,6 +4,8 @@ import com.example.ricms.domain.enums.CampaignType;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -29,6 +31,7 @@ public class Campaign {
     @Column(nullable = false, length = 30)
     private CampaignType type;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "JSONB")
     private String params;
 

@@ -5,23 +5,21 @@ import com.example.ricms.dto.response.AuditEventResponse;
 import com.example.ricms.dto.response.PageResponse;
 import com.example.ricms.repository.AuditEventRepository;
 import com.example.ricms.security.PermissionEnforcer;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
-/**
- * GET /v1/admin/audit-events
- *
- * Queryable admin view of the immutable audit log (Q1/Q2).
- * All parameters are optional – omit to list all events, newest first.
- * Requires ADMIN:READ permission.
- */
 @RestController
 @RequestMapping("/v1/admin/audit-events")
 @RequiredArgsConstructor
@@ -45,9 +43,20 @@ public class AuditController {
 
         permissionEnforcer.require("ADMIN", "READ");
 
-        Page<AuditEvent> events = auditEventRepository.findWithFilters(
-                actorUserId, resourceType, subjectId, operation, from, to,
-                PageRequest.of(page, pageSize));
+        Specification<AuditEvent> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (actorUserId != null)  predicates.add(cb.equal(root.get("actorUserId"), actorUserId));
+            if (resourceType != null) predicates.add(cb.equal(root.get("subjectResourceType"), resourceType));
+            if (subjectId != null)    predicates.add(cb.equal(root.get("subjectId"), subjectId));
+            if (operation != null)    predicates.add(cb.equal(root.get("operation"), operation));
+            if (from != null)         predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), from));
+            if (to != null)           predicates.add(cb.lessThanOrEqualTo(root.get("createdAt"), to));
+            query.orderBy(cb.desc(root.get("createdAt")));
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Page<AuditEvent> events = auditEventRepository.findAll(
+                spec, PageRequest.of(page, pageSize));
 
         return ResponseEntity.ok(PageResponse.of(events.map(this::toResponse)));
     }

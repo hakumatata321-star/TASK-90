@@ -15,7 +15,7 @@ ORDER_CTX_100='{"subtotal":100.00,"shippingCost":15.00}'
 api_call POST /v1/coupons/validate \
     "{\"couponCode\":\"WELCOME10\",\"orderContext\":$ORDER_CTX_500}"
 assert_status "WELCOME10 coupon → 200" 200 "$HTTP_CODE" "$BODY"
-assert_contains "WELCOME10 is valid" '"isValid":true' "$BODY"
+assert_contains "WELCOME10 is valid" '"valid":true' "$BODY"
 assert_contains "response has couponType" '"couponType"' "$BODY"
 assert_contains "response has discountAmount" '"discountAmount"' "$BODY"
 
@@ -23,8 +23,8 @@ assert_contains "response has discountAmount" '"discountAmount"' "$BODY"
 
 api_call POST /v1/coupons/validate \
     "{\"couponCode\":\"SAVE50\",\"orderContext\":$ORDER_CTX_100}"
-assert_status "SAVE50 below $500 threshold → 200 (invalid)" 200 "$HTTP_CODE" "$BODY"
-assert_contains "SAVE50 not applicable below threshold" '"isValid":false' "$BODY"
+assert_status "SAVE50 below \$500 threshold → 200 (invalid)" 200 "$HTTP_CODE" "$BODY"
+assert_contains "SAVE50 not applicable below threshold" '"valid":false' "$BODY"
 assert_contains "rejection reason present" '"reason"' "$BODY"
 
 # ── POST /v1/coupons/validate — SAVE50 at threshold → applicable ─────────────
@@ -32,14 +32,14 @@ assert_contains "rejection reason present" '"reason"' "$BODY"
 api_call POST /v1/coupons/validate \
     "{\"couponCode\":\"SAVE50\",\"orderContext\":$ORDER_CTX_500}"
 assert_status "SAVE50 at threshold → 200 (valid)" 200 "$HTTP_CODE" "$BODY"
-assert_contains "SAVE50 valid at threshold" '"isValid":true' "$BODY"
+assert_contains "SAVE50 valid at threshold" '"valid":true' "$BODY"
 
 # ── POST /v1/coupons/validate — FREESHIP shipping waiver ─────────────────────
 
 api_call POST /v1/coupons/validate \
     "{\"couponCode\":\"FREESHIP\",\"orderContext\":{\"subtotal\":250.00,\"shippingCost\":15.00}}"
 assert_status "FREESHIP above threshold → 200 (valid)" 200 "$HTTP_CODE" "$BODY"
-assert_contains "FREESHIP is valid" '"isValid":true' "$BODY"
+assert_contains "FREESHIP is valid" '"valid":true' "$BODY"
 assert_contains "waivedShipping is true" '"waivedShipping":true' "$BODY"
 
 # ── POST /v1/coupons/validate — unknown coupon code ──────────────────────────
@@ -47,14 +47,14 @@ assert_contains "waivedShipping is true" '"waivedShipping":true' "$BODY"
 api_call POST /v1/coupons/validate \
     "{\"couponCode\":\"NOSUCHCOUPON\",\"orderContext\":$ORDER_CTX_500}"
 assert_status "unknown coupon → 200 (isValid:false)" 200 "$HTTP_CODE" "$BODY"
-assert_contains "not found reason" '"isValid":false' "$BODY"
+assert_contains "not found reason" '"valid":false' "$BODY"
 
 # ── POST /v1/coupons/validate — missing coupon code → rejected ────────────────
 
 api_call POST /v1/coupons/validate \
     "{\"orderContext\":$ORDER_CTX_500}"
 assert_status "missing coupon code → 200 (isValid:false)" 200 "$HTTP_CODE" "$BODY"
-assert_contains "missing code rejected" '"isValid":false' "$BODY"
+assert_contains "missing code rejected" '"valid":false' "$BODY"
 
 # ── POST /v1/coupons/validate — without auth → 401 ───────────────────────────
 
@@ -73,14 +73,14 @@ assert_status "coupon validate without auth → 401" 401 "$HTTP_CODE"
 api_call POST /v1/campaigns/validate \
     '{"orderContext":{"subtotal":1200.00,"shippingCost":10.00}}'
 assert_status "campaign validate (auto) → 200" 200 "$HTTP_CODE" "$BODY"
-assert_contains "campaign validate has isValid field" '"isValid"' "$BODY"
+assert_contains "campaign validate has isValid field" '"valid"' "$BODY"
 
 # ── POST /v1/campaigns/validate — unknown campaign ID ────────────────────────
 
 api_call POST /v1/campaigns/validate \
     '{"campaignId":"00000000-0000-0000-0000-000000000000","orderContext":{"subtotal":500.00}}'
 assert_status "unknown campaign id → 200 (isValid:false)" 200 "$HTTP_CODE" "$BODY"
-assert_contains "unknown campaign not valid" '"isValid":false' "$BODY"
+assert_contains "unknown campaign not valid" '"valid":false' "$BODY"
 
 # ── POST /v1/campaigns/validate — missing campaign ID in request ──────────────
 

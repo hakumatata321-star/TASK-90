@@ -1,5 +1,7 @@
 # RICMS — Research Innovation Commerce & Service Management
 
+**Project type:** backend
+
 A Spring Boot 3 + PostgreSQL backend implementing membership, order lifecycle,
 work orders, outcomes/IP, and interaction governance.
 
@@ -8,16 +10,15 @@ work orders, outcomes/IP, and interaction governance.
 ## Quick Start
 
 ```bash
-# 1. Copy environment template and adjust secrets if needed.
-#    The template ships with a valid development encryption key.
-#    For production, generate a fresh one: openssl rand -base64 32
+# 1. Copy environment template (ships with a valid development key).
+#    For production: openssl rand -base64 32
 cp .env.example .env
 
-# 2. Start services
-docker compose up --build
+# 2. Start all services (database + app)
+docker-compose up --build
 ```
 
-The `app` service waits for the `db` healthcheck before starting Flyway migrations
+The `app` service waits for the `db` healthcheck before running Flyway migrations
 and serving traffic. Expect ~90 s on first run while Maven downloads dependencies
 inside the Docker build.
 
@@ -27,24 +28,41 @@ inside the Docker build.
 | Postgres  | localhost:5432 (user: `ricms`, db: `ricms`, password: `ricms_secret`) |
 | Health    | http://localhost:8080/actuator/health |
 
-### Default credentials
+### Demo credentials
 
-| Username | Password     | Role  |
-|----------|-------------|-------|
-| `admin`  | `Admin@1234!` | ADMIN |
+Seeded on first `docker-compose up` by Flyway migrations:
 
+| Username      | Password        | Role        |
+|---------------|-----------------|-------------|
+| `admin`       | `Admin@1234!`   | ADMIN       |
+| `member`      | `Member@1234!`  | MEMBER      |
+| `technician`  | `Tech@1234!`    | TECHNICIAN  |
 
+---
 
 ## Running Tests
 
-### One-command runner
+### Docker-only verification (no local JDK, Maven, or Python required)
+
+```bash
+# 1. Start the stack (database + app)
+docker-compose up -d --build
+
+# 2. Run unit tests inside Docker (no local Maven/JDK needed)
+docker-compose --profile test run --rm unit-tests
+
+# 3. Run API tests
+#    curl and python3 are pre-installed on macOS and all major Linux distros.
+RICMS_BASE_URL=http://localhost:8080 ./run_tests.sh --api-only
+```
+
+### One-command runner (local dev — requires JDK 21+, Maven 3.9+, curl, python3)
 
 ```bash
 ./run_tests.sh
 ```
 
-This script runs **both** unit tests and API tests and prints a consolidated
-pass/fail summary. Flags:
+Runs both unit tests and API tests and prints a consolidated pass/fail summary.
 
 ```bash
 ./run_tests.sh --unit-only    # Maven unit tests only (no server needed)
@@ -52,18 +70,13 @@ pass/fail summary. Flags:
 RICMS_BASE_URL=http://host:9090 ./run_tests.sh   # override server URL
 ```
 
-Requirements:
-- **Unit tests**: JDK 21+ and Maven 3.9+ on `PATH`
-- **API tests**: `curl` and `python3` on `PATH`; server running at `RICMS_BASE_URL`
-
-### Unit tests individually
+### Unit tests individually (local dev)
 
 ```bash
 mvn test
 ```
 
-Test sources are in `unit_tests/` (Maven build-helper adds them as a test source
-root). Coverage:
+Test sources live in `unit_tests/` (added as a Maven test source root via build-helper plugin).
 
 | Test class | What it covers |
 |-----------|----------------|
@@ -80,13 +93,16 @@ root). Coverage:
 
 ```bash
 # Ensure the server is running first
-docker compose up -d
+docker-compose up -d
 bash API_tests/01_auth.sh
 bash API_tests/02_members.sh
 bash API_tests/03_orders.sh
 bash API_tests/04_coupons_campaigns.sh
 bash API_tests/05_outcomes.sh
 bash API_tests/06_interactions.sh
+bash API_tests/07_admin.sh
+bash API_tests/08_work_orders.sh
+bash API_tests/09_rbac.sh
 ```
 
 ---
@@ -117,6 +133,10 @@ echo $TOKEN   # eyJhbGci...
 curl http://localhost:8080/v1/users \
   -H "Authorization: Bearer $TOKEN"
 
+# Get single user
+curl http://localhost:8080/v1/users/<userId> \
+  -H "Authorization: Bearer $TOKEN"
+
 # Create user
 curl -X POST http://localhost:8080/v1/users \
   -H "Authorization: Bearer $TOKEN" \
@@ -135,6 +155,18 @@ curl http://localhost:8080/v1/roles \
 
 curl http://localhost:8080/v1/permissions \
   -H "Authorization: Bearer $TOKEN"
+
+# Create role
+curl -X POST http://localhost:8080/v1/roles \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"AUDITOR","description":"Read-only auditor role"}'
+
+# Set role permissions
+curl -X POST http://localhost:8080/v1/roles/<roleId>/permissions \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"permissionIds":["<permId1>","<permId2>"]}'
 
 # Rotate own password
 curl -X POST http://localhost:8080/v1/auth/password/rotate \
@@ -256,6 +288,10 @@ curl -X POST http://localhost:8080/v1/work-orders \
   -H "Content-Type: application/json" \
   -d '{"description":"Device screen needs replacement","attachments":[]}'
 
+# Get work order
+curl http://localhost:8080/v1/work-orders/<workOrderId> \
+  -H "Authorization: Bearer $TOKEN"
+
 # Claim (technician assigns themselves — uses pessimistic lock to prevent double-claim)
 curl -X POST http://localhost:8080/v1/work-orders/<workOrderId>/claim \
   -H "Authorization: Bearer $TOKEN"
@@ -282,7 +318,7 @@ curl -X POST http://localhost:8080/v1/work-orders/<workOrderId>/rating \
 curl "http://localhost:8080/v1/work-orders/analytics?from=2025-01-01&to=2025-12-31" \
   -H "Authorization: Bearer $TOKEN"
 
-# Export CSV (this endpoint supports CSV only; use /v1/admin/exports/work-orders for Excel)
+# Export CSV
 curl "http://localhost:8080/v1/work-orders/export?format=csv" \
   -H "Authorization: Bearer $TOKEN" -o work_orders.csv
 ```
@@ -302,6 +338,10 @@ curl -X POST http://localhost:8080/v1/projects \
   -H "Content-Type: application/json" \
   -d '{"name":"AI Research 2025","description":"NLP and vision research"}'
 
+# Get project
+curl http://localhost:8080/v1/projects/<projectId> \
+  -H "Authorization: Bearer $TOKEN"
+
 # Register outcome (contributions MUST sum to exactly 100%)
 curl -X POST http://localhost:8080/v1/outcomes \
   -H "Authorization: Bearer $TOKEN" \
@@ -318,6 +358,10 @@ curl -X POST http://localhost:8080/v1/outcomes \
     ],
     "evidences": [{"evidenceType":"PDF","blobRef":"s3://bucket/paper.pdf"}]
   }'
+
+# Get contributions for an outcome
+curl http://localhost:8080/v1/outcomes/<outcomeId>/contributions \
+  -H "Authorization: Bearer $TOKEN"
 
 # Pre-check for duplicates before submission
 curl -X POST http://localhost:8080/v1/outcomes/duplicates/check \
@@ -436,7 +480,7 @@ repo/
 │   └── service/         Business logic
 ├── src/main/resources/
 │   ├── application.yml
-│   └── db/migration/    Flyway migrations (V1–V6)
+│   └── db/migration/    Flyway migrations (V1–V7)
 ├── unit_tests/           JUnit 5 unit tests (Maven adds as test source root)
 ├── API_tests/            curl-based functional test scripts
 ├── run_tests.sh          Unified test runner

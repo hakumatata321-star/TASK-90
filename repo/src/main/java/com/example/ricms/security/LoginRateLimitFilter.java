@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LoginRateLimitFilter extends OncePerRequestFilter {
 
     private static final String LOGIN_PATH = "/v1/auth/login";
-    private static final int    CAPACITY   = 10;
+    private static final int    CAPACITY   = 20;
     private static final int    RETRY_AFTER_SECONDS = 60;
 
     private final ConcurrentHashMap<String, Bucket> buckets = new ConcurrentHashMap<>();

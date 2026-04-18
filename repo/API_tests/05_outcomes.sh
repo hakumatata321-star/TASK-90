@@ -19,7 +19,7 @@ raw=$(curl -s -w "\n%{http_code}" -X POST "$BASE_URL/v1/projects" \
     -H "Content-Type: application/json" \
     -d '{"name":"Test Research Project","description":"For API testing"}')
 HTTP_CODE=$(echo "$raw" | tail -1)
-BODY=$(echo "$raw" | head -n -1)
+BODY=$(echo "$raw" | sed '$d')
 assert_status "create project → 201 or 200" 201 "$HTTP_CODE" "$BODY" 2>/dev/null || \
 assert_status "create project → 200" 200 "$HTTP_CODE" "$BODY"
 PROJECT_ID=$(json_val "$BODY" "id")
@@ -136,6 +136,32 @@ if [ -n "$PROJECT_ID" ]; then
     assert_status "list outcomes by project → 200" 200 "$HTTP_CODE" "$BODY"
     assert_contains "paginated list returned" '"content"' "$BODY"
 fi
+
+# ── GET /v1/projects/{projectId} ─────────────────────────────────────────────
+
+if [ -n "$PROJECT_ID" ]; then
+    api_call GET "/v1/projects/$PROJECT_ID"
+    assert_status "get project by id → 200" 200 "$HTTP_CODE" "$BODY"
+    assert_contains "project has id" '"id"' "$BODY"
+    assert_contains "project has name" '"name"' "$BODY"
+fi
+
+# Non-existent project → 404
+api_call GET "/v1/projects/00000000-0000-0000-0000-000000000000"
+assert_status "get non-existent project → 404" 404 "$HTTP_CODE" "$BODY"
+
+# ── GET /v1/outcomes/{outcomeId}/contributions ────────────────────────────────
+
+if [ -n "$OUTCOME_ID" ]; then
+    api_call GET "/v1/outcomes/$OUTCOME_ID/contributions"
+    assert_status "get outcome contributions → 200" 200 "$HTTP_CODE" "$BODY"
+    # Response is a list
+    assert_contains "contributions list returned" '"sharePercent"' "$BODY"
+fi
+
+# Non-existent outcome contributions → 404
+api_call GET "/v1/outcomes/00000000-0000-0000-0000-000000000000/contributions"
+assert_status "get contributions for non-existent outcome → 404" 404 "$HTTP_CODE" "$BODY"
 
 # ── Permission check — no auth → 401 ─────────────────────────────────────────
 

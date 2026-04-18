@@ -188,6 +188,8 @@ public class OutcomeService {
 
     public List<ContributionResponse> listContributions(UUID outcomeId) {
         permissionEnforcer.require("OUTCOME", "READ");
+        outcomeRepository.findById(outcomeId)
+                .orElseThrow(() -> new AppException("OUTCOME_NOT_FOUND", "Outcome not found", HttpStatus.NOT_FOUND));
         // RLS: non-admin callers only see their own contribution row
         List<Contribution> contribs;
         if (SecurityUtils.hasPermission("ADMIN", "READ")) {

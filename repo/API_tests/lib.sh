@@ -26,13 +26,13 @@ assert_status() {
     local desc="$1" expected="$2" actual="$3" body="${4:-}"
     if [ "$actual" = "$expected" ]; then
         echo "  ✓ $desc"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo "  ✗ $desc  (expected HTTP $expected, got HTTP $actual)"
         if [ -n "$body" ]; then
             echo "    $(echo "$body" | head -c 300)"
         fi
-        ((FAIL++))
+        FAIL=$((FAIL+1))
         FAILURES="$FAILURES\n    • $desc"
     fi
 }
@@ -44,11 +44,11 @@ assert_contains() {
     local desc="$1" needle="$2" haystack="$3"
     if echo "$haystack" | grep -q "$needle"; then
         echo "  ✓ $desc"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo "  ✗ $desc  (expected to contain: $needle)"
         echo "    got: $(echo "$haystack" | head -c 200)"
-        ((FAIL++))
+        FAIL=$((FAIL+1))
         FAILURES="$FAILURES\n    • $desc"
     fi
 }
@@ -60,19 +60,25 @@ assert_not_contains() {
     local desc="$1" needle="$2" haystack="$3"
     if ! echo "$haystack" | grep -q "$needle"; then
         echo "  ✓ $desc"
-        ((PASS++))
+        PASS=$((PASS+1))
     else
         echo "  ✗ $desc  (expected NOT to contain: $needle)"
-        ((FAIL++))
+        FAIL=$((FAIL+1))
         FAILURES="$FAILURES\n    • $desc"
     fi
 }
 
 # ---------------------------------------------------------------------------
 # login <username> <password>  → sets TOKEN env var
+# Reuses ADMIN_TOKEN if pre-logged-in by run_tests.sh (avoids rate-limit exhaustion).
 # ---------------------------------------------------------------------------
 login() {
     local user="$1" pass="$2"
+    if [ "$user" = "admin" ] && [ -n "${ADMIN_TOKEN:-}" ]; then
+        TOKEN="$ADMIN_TOKEN"
+        export TOKEN
+        return 0
+    fi
     local resp
     resp=$(curl -s -X POST "$BASE_URL/v1/auth/login" \
         -H "Content-Type: application/json" \
@@ -95,7 +101,7 @@ api_call() {
     local raw
     raw=$(curl "${args[@]}")
     HTTP_CODE=$(echo "$raw" | tail -1)
-    BODY=$(echo "$raw" | head -n -1)
+    BODY=$(echo "$raw" | sed '$d')
     export HTTP_CODE BODY
 }
 
@@ -112,7 +118,7 @@ api_call_noauth() {
     local raw
     raw=$(curl "${args[@]}")
     HTTP_CODE=$(echo "$raw" | tail -1)
-    BODY=$(echo "$raw" | head -n -1)
+    BODY=$(echo "$raw" | sed '$d')
     export HTTP_CODE BODY
 }
 

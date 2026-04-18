@@ -102,7 +102,7 @@ BEGIN
   -- --------------------------------------------------------
   v_admin_user_id := gen_random_uuid();
   INSERT INTO users (id, username, password_hash, status) VALUES
-    (v_admin_user_id, 'admin', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LfEFR64luyO', 'ACTIVE');
+    (v_admin_user_id, 'admin', '$2b$10$Qr6Msk/fvrZYkWHlpIozBO8P98Q6m2YqCpmMvvoUy/RzEdihBZMu6', 'ACTIVE');
 
   INSERT INTO user_roles (user_id, role_id) VALUES
     (v_admin_user_id, v_admin_role_id);

@@ -4,6 +4,7 @@ import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
@@ -41,6 +42,12 @@ public class GlobalExceptionHandler {
                         (a, b) -> a
                 ));
         Map<String, Object> body = buildError("VALIDATION_ERROR", "Request validation failed", fieldErrors);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleMessageNotReadable(HttpMessageNotReadableException ex) {
+        Map<String, Object> body = buildError("VALIDATION_ERROR", "Invalid request body", null);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 

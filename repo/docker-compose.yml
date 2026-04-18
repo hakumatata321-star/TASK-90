@@ -37,13 +37,20 @@ services:
       APP_ENCRYPTION_SECRET_KEY: ${APP_ENCRYPTION_SECRET_KEY:-WnVea3WTlDC0CXcZaL/SDRVSisv4xPnyM1Ja8VFoGWo=}
       SPRING_JPA_SHOW_SQL: "false"
     ports:
-      - "8080:8080"
+      - "8082:8080"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  unit-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    profiles: ["test"]
 
 volumes:
   pgdata:
